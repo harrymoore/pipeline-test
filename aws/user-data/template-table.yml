@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for provisioning the "CmsUserDataTable" DynamoDB Table used by the "CmsUserDataFunction" Lambda function.
+
+Resources:
+  CmsUserDataTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: CmsUserDataTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: site
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH  # Partition key
+        - AttributeName: site
+          KeyType: RANGE # Sort key
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+Outputs:
+  CmsUserDataTableName:
+    Description: "CmsUserDataTable DynamoDB table name"
+    Value: !Ref CmsUserDataTable
+    Export:
+      Name: !Sub "${AWS::StackName}-CmsUserDataTableName"
+  CmsUserDataTableARN:
+    Description: "CmsUserDataTable DynamoDB table ARN"
+    Value: !GetAtt CmsUserDataTable.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-CmsUserDataTableARN"

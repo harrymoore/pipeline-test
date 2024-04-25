@@ -1,0 +1,31 @@
+---
+version: 0.2
+env:
+    TEMPLATE_SRC: template-table.yaml
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+
+  pre_build:
+  
+  build:
+    commands:
+      - echo Build Started on `date`
+      - cd aws
+      - mvn -s ../settings.xml -pl commons,forms clean package
+
+  post_build:
+    commands:
+      - cd forms
+      - sam package --template ${TEMPLATE_SRC} --output-template-file packaged.yml --s3-bucket ${ARTIFACT_BUCKET} --kms-key-id ${CODEBUILD_KMS_KEY_ID}
+      - echo Build Stopped on `date`
+
+artifacts:
+  base-directory: aws/user-data
+  files:
+    - ${TEMPLATE_SRC}
+
+cache:
+  paths:

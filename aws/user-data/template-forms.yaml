@@ -1,0 +1,206 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "APP-5183 Forms Lambda"
+
+Parameters:
+  AppId:
+    Type: Number
+    Description: PlanIT APP ID
+    Default: 5183
+  StageName:
+    Type: String
+    Default: dev  # change to dev after testing
+    Description: Name of the deployment stage. The value is used for the default environment variable AppEnvironment
+    MaxLength: 10
+    ConstraintDescription: Stage name must be no more than 10 characters
+  VpcId:
+    Type: "AWS::EC2::VPC::Id"
+    Description: VPC to provision the application
+    Default: vpc-0baf4f677695c8de9
+  DataClassification:
+    Type: String
+    Description: Data classification
+    Default: NonConfidential
+    AllowedValues:
+      - NonConfidential
+      - CompanyConfidential
+      - HighlyRestricted
+  EnvironmentType:
+    Type: String
+    Description: Environment type
+    Default: NONPROD
+    AllowedValues:
+      - NONPROD
+      - PREPROD
+      - PROD
+      - DR
+
+Conditions:
+  IsDev: !Equals [!Ref StageName, dev]
+  IsProd: !Equals [!Ref StageName, prod]
+  IsNonProd: !Not [!Equals [!Ref StageName, prod]]
+  IsDevOrProd: !Or [Condition: IsDev, Condition: IsProd]
+
+Mappings:
+  AccountMap:
+    dev:
+      defaultEnvironment: "dev"
+      endpointUrlDevPublic: ""
+      endpointUrlQaPublic: ""
+      endpointUrlProdPublic: ""
+      endpointUrlDevAuthor: ""
+      endpointUrlQaAuthor: ""
+      endpointUrlProdAuthor: ""
+      reCaptchaUrl: "https://www.google.com/recaptcha/api/siteverify"
+      securityGroupIds: "sg-01dd7efdf1d693f81"
+      accountId: "759481349216"
+      subnetIds: "subnet-0eed83ff7d12c27c1,subnet-0dba213b10a8f11d7,subnet-0d9f1c8d984a30a8a"
+      formsHost: "higmx.thehartford.com"
+      environment: "dev"
+      becomeAgentServiceBaseUrl: "https://thehartford--pcqa.sandbox.my.salesforce.com"
+      leadgenServiceBaseUrl: "https://directsales--isqa.sandbox.my.salesforce.com"
+    qa:
+      defaultEnvironment: "qa"
+      endpointUrlDevPublic: ""
+      endpointUrlQaPublic: ""
+      endpointUrlProdPublic: ""
+      endpointUrlDevAuthor: ""
+      endpointUrlQaAuthor: ""
+      endpointUrlProdAuthor: ""
+      reCaptchaUrl: "https://www.google.com/recaptcha/api/siteverify"
+      securityGroupIds: "sg-01dd7efdf1d693f81"
+      accountId: "759481349216"
+      subnetIds: "subnet-0eed83ff7d12c27c1,subnet-0dba213b10a8f11d7,subnet-0d9f1c8d984a30a8a"
+      formsHost: "higmx.thehartford.com"
+      environment: "qa"
+      becomeAgentServiceBaseUrl: "https://thehartford--pcqa.sandbox.my.salesforce.com"
+      leadgenServiceBaseUrl: "https://directsales--isqa.sandbox.my.salesforce.com"
+    prod:
+      defaultEnvironment: "prod"
+      endpointUrlDevPublic: ""
+      endpointUrlQaPublic: ""
+      endpointUrlProdPublic: ""
+      endpointUrlDevAuthor: ""
+      endpointUrlQaAuthor: ""
+      endpointUrlProdAuthor: ""
+      reCaptchaUrl: "https://www.google.com/recaptcha/api/siteverify"
+      securityGroupIds: "sg-0fa1b009682935df3"
+      accountId: "064979414247"
+      subnetIds: "subnet-0771a27d821564323,subnet-09c180922e2ee42d9,subnet-0a4ddea4743be979c"
+      formsHost: "higmx.thehartford.com"
+      environment: "prod"
+      becomeAgentServiceBaseUrl: "https://thehartford.my.salesforce.com"
+      leadgenServiceBaseUrl: "https://directsales.my.salesforce.com"
+
+Globals:
+  Function:
+    Tags:
+      hig-planit-appid: !Sub  APP-${AppId}-${EnvironmentType}
+      hig-billing: !Sub  APP-${AppId}
+      hig-environment-type: !Ref  EnvironmentType
+      hig-data-classification: !Ref  DataClassification
+
+Resources:
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaENIManagementAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Path: '/hig/'
+      PermissionsBoundary:
+        !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/PermissionBoundary
+      Tags:
+      - Key: hig-planit-appid
+        Value: !Sub  APP-${AppId}-${EnvironmentType}
+      - Key: hig-billing
+        Value: !Sub  APP-${AppId}
+      - Key: hig-environment-type
+        Value: !Ref  EnvironmentType
+      - Key: hig-data-classification
+        Value: !Ref  DataClassification
+
+  LambdaSecretPolicy:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductName: IAM Policy Primitive
+      ProvisionedProductName: !Sub APP-${AppId}-${StageName}-lambda-secret-policy-forms
+      ProvisioningArtifactName: v2.0.5Beta
+      ProvisioningParameters:
+        - Key: PolicyName
+          Value: "SecretsManagerReadAccessRole"
+        - Key: IAMRoleNames
+          Value: !Ref Role
+        - Key: ResourceArn
+          Value: !Sub arn:aws:secretsmanager:us-east-1:${AWS::AccountId}:secret:APP-5183-${StageName}-forms*
+        - Key: AccountId
+          Value: !FindInMap [AccountMap, !Ref StageName, accountId]
+        - Key: AppId
+          Value: 5183
+
+  Forms:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.hig.forms.FormRequestHandler::handleRequest
+      Runtime: java11
+      CodeUri: ./target/forms.jar
+      MemorySize: 2048
+      Role: !GetAtt Role.Arn
+      Timeout: 15
+      FunctionName: !Sub APP-${AppId}-${StageName}-forms
+      Layers:
+        - "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceLayerARNNodJava}}"
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          defaultEnvironment: !FindInMap [AccountMap, !Ref StageName, defaultEnvironment]
+          endpointUrlDevPublic: !FindInMap [AccountMap, !Ref StageName, endpointUrlDevPublic]
+          endpointUrlQaPublic: !FindInMap [AccountMap, !Ref StageName, endpointUrlQaPublic]
+          endpointUrlProdPublic: !FindInMap [AccountMap, !Ref StageName, endpointUrlProdPublic]
+          endpointUrlDevAuthor: !FindInMap [AccountMap, !Ref StageName, endpointUrlDevAuthor]
+          endpointUrlQaAuthor: !FindInMap [AccountMap, !Ref StageName, endpointUrlQaAuthor]
+          endpointUrlProdAuthor: !FindInMap [AccountMap, !Ref StageName, endpointUrlProdAuthor]
+          reCaptchaUrl: !FindInMap [AccountMap, !Ref StageName, reCaptchaUrl]
+          environment: !FindInMap [AccountMap, !Ref StageName, environment]
+          form_mail_host: !FindInMap [AccountMap, !Ref StageName, formsHost]
+          becomeAgentServiceBaseUrl: !FindInMap [AccountMap, !Ref StageName, becomeAgentServiceBaseUrl]
+          leadgenServiceBaseUrl: !FindInMap [AccountMap, !Ref StageName, leadgenServiceBaseUrl]
+          AWS_LAMBDA_EXEC_WRAPPER: "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceLambdaExecWrapper}}"
+          DT_TENANT: "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceTenant}}"
+          DT_CLUSTER_ID: "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceClusterID}}"
+          DT_CONNECTION_BASE_URL: "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceBaseURL}}"
+          DT_CONNECTION_AUTH_TOKEN: "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceAuthToken}}"
+          DT_OPEN_TELEMETRY_ENABLE_INTEGRATION: "{{resolve:ssm:/HIG/Observability/Monitoring/DynatraceEnableOTEL}}"
+          DT_TAGS: !Sub "AppId=APP-${AppId} Environment=${StageName} SnowAppId=APP-${AppId}-${EnvironmentType}"
+          DT_LOGGING_DESTINATION: "stdout"
+          DT_LOGGING_JAVA_FLAGS: "log-Transformer.instrumentation=true,log-LambdaExtension=true,log-LambdaExtensionService=true,log-AwsLambdaIntrospection=true"
+          DT_LOG_AwsLambdaIntrospection: "true"
+          DT_LOG_LambdaExtension: "true"
+          DT_LOG_LambdaExtensionService: "true"
+#           JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStore=./keystore/higtruststore -Djavax.net.ssl.trustStorePassword=higtruststore"    
+      VpcConfig:
+        SecurityGroupIds:
+          !Split [",", !FindInMap [AccountMap, !Ref StageName, securityGroupIds] ]
+        SubnetIds:
+          !Split [",", !FindInMap [AccountMap, !Ref StageName, subnetIds] ]
+
+  FormsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Ref Forms
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+
+  FormsLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/APP-${AppId}-${StageName}-forms"
+      RetentionInDays: !If [IsProd, 365, 30]

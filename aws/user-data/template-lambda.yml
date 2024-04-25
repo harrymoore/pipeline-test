@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for provisioning the "CmsUserDataTable" APIC service DynamoDB table and  "CmsUserDataFunction" Lambda function.
+
+Resources:
+  CmsUserDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: cmsUserData.handler
+      Runtime: nodejs20.x
+      CodeUri: ./src/
+      Description: APIC Lambda function implementing CRUD operations on the CmsUserDataTable DynamoDB table.
+      MemorySize: 128
+      Timeout: 15
+      Environment:
+        Variables:
+          TABLE_NAME: !ImportValue cms-user-data-table-stack-CmsUserDataTableName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue cms-user-data-table-stack-CmsUserDataTableName
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaDynamoDBAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !ImportValue cms-user-data-table-stack-CmsUserDataTableARN
+              - Effect: Deny
+                Action:
+                  - dynamodb:DeleteItem
+                Resource: !ImportValue cms-user-data-table-stack-CmsUserDataTableARN
+
+Outputs:
+  CmsUserDataFunction:
+    Description: "CmsUserDataFunction Lambda Function ARN"
+    Value: !GetAtt CmsUserDataFunction.Arn
